@@ -1,0 +1,28 @@
+{
+  "name": "contextpulse-mcp",
+  "version": "0.1.0",
+  "description": "Real-time context budget tracking and agent observability MCP server",
+  "type": "module",
+  "main": "dist/proxy/server.js",
+  "bin": {
+    "contextpulse-mcp": "dist/proxy/server.js"
+  },
+  "scripts": {
+    "dev": "tsx src/proxy/server.ts",
+    "build": "tsup src/proxy/server.ts --format esm --dts --out-dir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "js-tiktoken": "^1.0.21",
+    "pg": "^8.13.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/pg": "^8.11.13",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
