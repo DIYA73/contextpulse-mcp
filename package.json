@@ -8,17 +8,29 @@
     "contextpulse-mcp": "dist/proxy/server.js"
   },
   "scripts": {
+    "dev:mcp": "tsx src/proxy/server.ts",
+    "dev:api": "tsx src/api/main.ts",
     "dev": "tsx src/proxy/server.ts",
     "build": "tsup src/proxy/server.ts --format esm --dts --out-dir dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@nestjs/common": "^11.1.27",
+    "@nestjs/core": "^11.1.27",
+    "@nestjs/platform-express": "^11.1.27",
+    "@nestjs/platform-socket.io": "^11.1.27",
+    "@nestjs/websockets": "^11.1.27",
+    "cors": "^2.8.6",
     "js-tiktoken": "^1.0.21",
     "pg": "^8.13.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/node": "^22.15.3",
     "@types/pg": "^8.11.13",
     "tsup": "^8.4.0",

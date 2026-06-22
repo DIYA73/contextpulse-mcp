@@ -109,6 +109,13 @@ export class BudgetTracker extends EventEmitter {
     this.runs.delete(runId);
   }
 
+  getActiveRuns(): Array<{ runId: string; budget: { used: number; limit: number; percentUsed: number } }> {
+    return Array.from(this.runs.values()).map((state) => ({
+      runId: state.runId,
+      budget: { used: state.totalTokens, limit: this.cfg.contextLimit, percentUsed: parseFloat(((state.totalTokens / this.cfg.contextLimit) * 100).toFixed(2)) },
+    }));
+  }
+
   private getOrInit(runId: RunId): RunState {
     let state = this.runs.get(runId);
     if (state === undefined) {
