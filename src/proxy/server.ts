@@ -6,6 +6,8 @@ import pg from "pg";
 
 import { config } from "../config/index.js";
 import { runMigration } from "../db/schema.js";
+import { enqueueAlert } from "../alerts/alert.queue.js";
+import { startAlertWorker } from "../alerts/alert.worker.js";
 import { Storage } from "../storage/index.js";
 import { BudgetTracker } from "../token/budget-tracker.js";
 import {
@@ -24,6 +26,7 @@ import type { ToolCallEvent, BudgetStatus } from "../types/index.js";
 
 const pool = new pg.Pool({ connectionString: config.db.connectionString });
 await runMigration(pool);
+startAlertWorker();
 
 const storage = new Storage(pool);
 const tracker = new BudgetTracker(config);
@@ -31,41 +34,40 @@ const tracker = new BudgetTracker(config);
 // ─── Persist alert events from the tracker ───────────────────────────────────
 
 tracker.on("event", (event: ToolCallEvent) => {
-  if (event.event === "budget_warning" || event.event === "budget_critical") {
+  const now = new Date().toISOString();
+
+  if (event.event === "budget_warning") {
     const { runId, budget } = event.data;
-    const alertType =
-      event.event === "budget_warning" ? "warning" : "critical";
-    storage
-      .saveAlert(runId, alertType, { budget }, undefined, budget.used, budget.percentUsed)
-      .catch((err: unknown) => {
-        console.error("[contextpulse] Failed to save alert:", err);
-      });
+    // Save to DB
+    storage.saveAlert(runId, "warning", { budget }, undefined, budget.used, budget.percentUsed)
+      .catch((err: unknown) => console.error("[contextpulse] Failed to save alert:", err));
+    // Enqueue async alert job
+    enqueueAlert("budget_warning", {
+      type: "budget_warning", runId, sessionId: "",
+      tokensUsed: budget.used, tokenLimit: budget.limit,
+      percentUsed: budget.percentUsed, firedAt: now,
+    }).catch(() => void 0);
+  }
+
+  if (event.event === "budget_critical") {
+    const { runId, budget } = event.data;
+    storage.saveAlert(runId, "critical", { budget }, undefined, budget.used, budget.percentUsed)
+      .catch((err: unknown) => console.error("[contextpulse] Failed to save alert:", err));
+    enqueueAlert("budget_critical", {
+      type: "budget_critical", runId, sessionId: "",
+      tokensUsed: budget.used, tokenLimit: budget.limit,
+      percentUsed: budget.percentUsed, firedAt: now,
+    }).catch(() => void 0);
   }
 
   if (event.event === "loop_detected") {
     const { runId, toolName, count } = event.data;
-    storage
-      .saveAlert(runId, "loop_detected", { toolName, count }, toolName)
-      .catch((err: unknown) => {
-        console.error("[contextpulse] Failed to save loop alert:", err);
-      });
-    console.warn(
-      `[contextpulse] ⚠️  Loop detected: "${toolName}" called ${count}× in run ${runId}`
-    );
-  }
-
-  if (event.event === "budget_warning") {
-    const { budget } = event.data;
-    console.warn(
-      `[contextpulse] ⚠️  Budget WARNING: ${budget.percentUsed.toFixed(1)}% used (${budget.used.toLocaleString()} / ${budget.limit.toLocaleString()} tokens)`
-    );
-  }
-
-  if (event.event === "budget_critical") {
-    const { budget } = event.data;
-    console.error(
-      `[contextpulse] 🚨 Budget CRITICAL: ${budget.percentUsed.toFixed(1)}% used (${budget.used.toLocaleString()} / ${budget.limit.toLocaleString()} tokens)`
-    );
+    storage.saveAlert(runId, "loop_detected", { toolName, count }, toolName)
+      .catch((err: unknown) => console.error("[contextpulse] Failed to save loop alert:", err));
+    enqueueAlert("loop_detected", {
+      type: "loop_detected", runId, sessionId: "",
+      toolName, count, firedAt: now,
+    }).catch(() => void 0);
   }
 });
 
