@@ -39,7 +39,7 @@ export class DiffController {
     const tools: ToolDiff[] = Array.from(allTools).map(toolName => {
       const a = runA.tools.find(t => t.toolName === toolName);
       const b = runB.tools.find(t => t.toolName === toolName);
-      return { toolName, countA: a?.callCount ?? 0, countB: b?.callCount ?? 0, tokensA: a?.totalTokens ?? 0, tokensB: b?.totalTokens ?? 0, deltaTokens: (b?.totalTokens ?? 0) - (a?.totalTokens ?? 0), onlyIn: a && b ? "both" : a ? "a" : "b", loopA: a?.isLoop ?? false, loopB: b?.isLoop ?? false };
+      return { toolName, countA: a?.callCount ?? 0, countB: b?.callCount ?? 0, tokensA: a?.totalTokens ?? 0, tokensB: b?.totalTokens ?? 0, deltaTokens: (b?.totalTokens ?? 0) - (a?.totalTokens ?? 0), onlyIn: (a && b ? "both" : a ? "a" : "b") as "a" | "b" | "both", loopA: a?.isLoop ?? false, loopB: b?.isLoop ?? false };
     }).sort((x, y) => Math.abs(y.deltaTokens) - Math.abs(x.deltaTokens));
     const loopsA = new Set(runA.tools.filter(t => t.isLoop).map(t => t.toolName));
     const loopsB = new Set(runB.tools.filter(t => t.isLoop).map(t => t.toolName));
