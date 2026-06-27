@@ -9,6 +9,8 @@ Plug into Claude Code, Cursor, or any MCP-compatible tool and get:
 - ⚠️ Warning / critical alerts before context overflow
 - 🗄️ Full run history stored in PostgreSQL
 - 📈 Budget timeline for every run
+- 🔴 BullMQ alert queue for async threshold notifications
+- 🔄 Run diff engine — compare two agent runs side by side
 
 No cloud. No telemetry. Runs entirely on your machine.
 
@@ -16,18 +18,19 @@ No cloud. No telemetry. Runs entirely on your machine.
 
 ## How it works
 
-ContextPulse is a **transparent MCP server**. You call its tracking tools from
-your agent's workflow. It counts tokens using `tiktoken`, updates a live budget
-in memory, persists everything to PostgreSQL, and fires alerts when thresholds
-are crossed.
-
-```
+ContextPulse is a **transparent MCP server**. You call its tracking tools from your agent's workflow. It counts tokens using `tiktoken`, updates a live budget in memory, persists everything to PostgreSQL, and fires alerts when thresholds are crossed.
 Your agent → calls cp_track_tool_call → ContextPulse counts tokens
-                                       → updates live budget
-                                       → warns at 70% / 90%
-                                       → detects loops
-                                       → saves to DB
-```
+
+→ updates live budget
+
+→ warns at 70% / 90%
+
+→ detects loops
+
+→ saves to DB
+
+→ queues BullMQ alert jobs
+The [contextpulse dashboard](https://github.com/DIYA73/contextpulse) connects over WebSocket and visualizes everything in real time.
 
 ---
 
@@ -36,16 +39,20 @@ Your agent → calls cp_track_tool_call → ContextPulse counts tokens
 ### 1. Start PostgreSQL
 
 ```bash
-# macOS with Homebrew
 brew services start postgresql@16
-
-# or via Docker
-docker run -d --name contextpulse-db \
-  -e POSTGRES_DB=contextpulse \
-  -p 5432:5432 postgres:16
+# or Docker
+docker run -d --name contextpulse-db -e POSTGRES_DB=contextpulse -p 5432:5432 postgres:16
 ```
 
-### 2. Add to Claude Code (`~/.claude/settings.json`)
+### 2. Start Redis (required for BullMQ alert queue)
+
+```bash
+brew services start redis
+# or Docker
+docker run -d --name contextpulse-redis -p 6379:6379 redis:7
+```
+
+### 3. Add to Claude Code (`~/.claude/settings.json`)
 
 ```json
 {
@@ -61,7 +68,7 @@ docker run -d --name contextpulse-db \
 }
 ```
 
-### 3. Add to Cursor (`~/.cursor/mcp.json`)
+### 4. Add to Cursor (`~/.cursor/mcp.json`)
 
 ```json
 {
@@ -82,16 +89,12 @@ docker run -d --name contextpulse-db \
 ---
 
 ## Usage in your agent
-
-```
-1. cp_start_session   → get sessionId
-2. cp_start_run       → get runId
-3. cp_track_tool_call → after every tool call (pass tool name, args, output)
-4. cp_get_budget      → check current budget at any time
-5. cp_get_run_summary → full run summary with timeline
-6. cp_end_run         → clean up
-```
-
+cp_start_session   → get sessionId
+cp_start_run       → get runId
+cp_track_tool_call → after every tool call (pass tool name, args, output)
+cp_get_budget      → check current budget at any time
+cp_get_run_summary → full run summary with timeline
+cp_end_run         → clean up
 ### Example response from `cp_track_tool_call`
 
 ```json
@@ -123,34 +126,54 @@ When budget hits 70%:
 
 ## Environment variables
 
-| Variable                  | Default                                        | Description                      |
-|---------------------------|------------------------------------------------|----------------------------------|
-| `DATABASE_URL`            | `postgresql://apple@localhost:5432/contextpulse` | PostgreSQL connection string     |
-| `CONTEXT_LIMIT`           | `200000`                                       | Token limit per session          |
-| `WARNING_THRESHOLD_PCT`   | `70`                                           | Warning alert threshold (%)      |
-| `CRITICAL_THRESHOLD_PCT`  | `90`                                           | Critical alert threshold (%)     |
-| `LOOP_DETECTION_THRESHOLD`| `3`                                            | Same tool calls before loop alert|
-| `MODEL`                   | `claude-sonnet-4-6`                            | Model label for records          |
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `postgresql://apple@localhost:5432/contextpulse` | PostgreSQL connection string |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection for BullMQ |
+| `CONTEXT_LIMIT` | `200000` | Token limit per session |
+| `WARNING_THRESHOLD_PCT` | `70` | Warning alert threshold (%) |
+| `CRITICAL_THRESHOLD_PCT` | `90` | Critical alert threshold (%) |
+| `LOOP_DETECTION_THRESHOLD` | `3` | Same tool calls before loop alert |
+| `MODEL` | `claude-sonnet-4-6` | Model label for records |
 
 ---
 
 ## What gets stored
+cp_sessions         -- one row per coding session
 
-```sql
-cp_sessions       -- one row per coding session
-cp_runs           -- one row per agent task
-cp_tool_calls     -- every intercepted tool call
+cp_runs             -- one row per agent task
+
+cp_tool_calls       -- every intercepted tool call
+
 cp_budget_snapshots -- token usage timeline per run
-cp_alerts         -- warnings, criticals, loop detections
-```
 
+cp_alerts           -- warnings, criticals, loop detections
 ---
 
-## Roadmap
+## Architecture
+contextpulse-mcp/
 
-- [ ] Phase 2: Next.js real-time dashboard with WebSocket stream
-- [ ] Phase 3: Loop detection graph + BullMQ alert jobs
-- [ ] Phase 4: Run diff engine — compare two agent runs side by side
+src/
+
+mcp/       ← MCP tool handlers
+
+context/   ← token counting + budget engine
+
+alerts/    ← BullMQ queue + worker
+
+diff/      ← run diff engine
+
+db/        ← PostgreSQL schema + queries
+contextpulse/  ← dashboard repo
+
+app/dashboard/
+
+components/
+---
+
+## Related
+
+- [contextpulse](https://github.com/DIYA73/contextpulse) — Real-time Next.js dashboard for this server
 
 ---
 
